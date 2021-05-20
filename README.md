@@ -15,7 +15,10 @@
 https://github.com/zhaoweih/shadowsocksRb-android/releases
 
 
+### 问题
 [常见问题](FAQ.md)
+
+[移动4G无法连接SSR解决方案汇总(亲测有效)](https://zhuanlan.zhihu.com/p/94088821)
 
 ### 编译
 
