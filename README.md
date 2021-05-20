@@ -6,11 +6,14 @@
 
 - 优化深色模式配色
 
-  <img align="left" src="./README_images/ssr.jpg" alt="drawing" width="300">
+
+<p align="left"><img src="./README_images/ssr.jpg" width="300"></p>
+
 
 ### 下载
 
 https://github.com/zhaoweih/shadowsocksRb-android/releases
+
 
 [常见问题](FAQ.md)
 
