@@ -7,7 +7,7 @@ android {
     buildToolsVersion rootProject.buildToolsVersion
 
     defaultConfig {
-        applicationId "io.github.shadowsocksrb"
+        applicationId "tech.chiuwaiho.ssr"
         minSdkVersion rootProject.minSdkVersion
         targetSdkVersion rootProject.sdkVersion
         versionCode rootProject.versionCode

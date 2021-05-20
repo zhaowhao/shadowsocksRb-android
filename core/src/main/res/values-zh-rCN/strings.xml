@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <string name="app_name">酸酸乳</string>
+    <string name="app_name">SSR</string>
     <string name="quick_toggle">"开关"</string>
     <string name="send_email">"发送电子邮件"</string>
 
@@ -119,7 +119,7 @@
     <string name="delete">"删除"</string>
     <string name="delete_confirm_prompt">"您确定要删除此配置文件？"</string>
     <string name="share_qr_nfc">"二维码"</string>
-    <string name="add_profile_dialog">"为酸酸乳添加此配置？"</string>
+    <string name="add_profile_dialog">"为SSR添加此配置？"</string>
     <string name="add_profile_methods_scan_qr_code">"扫描二维码"</string>
     <string name="add_profile_methods_manual_settings">"手动设置"</string>
     <string name="add_profile_scanner_permission_required">"扫描二维码需要获得使用相机的权限。"</string>
