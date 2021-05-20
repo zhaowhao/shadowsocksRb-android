@@ -1,25 +1,28 @@
 ## ShadowsocksR Android 客户端
 
-由 Shadowsocks Android 客户端修改而来，支持 SSR 协议。
+由 ShadowsocksR Android 客户端修改而来，支持 SSR 协议。
+
+修改第一版：
+
+- 优化深色模式配色
+
+  <img align="left" src="./README_images/ssr.jpg" alt="drawing" width="300">
+
+### 下载
+
+https://github.com/zhaoweih/shadowsocksRb-android/releases
 
 [常见问题](FAQ.md)
 
 ### 编译
 
-* [Git](https://git-scm.com/downloads)
-* [OpenJDK 8+](https://jdk.java.net/)
-* [Android SDK](https://developer.android.com/studio#command-tools)
-  - Android SDK Build-Tools 30.0.2
-  - Android SDK Platform 30
-  - NDK (Side by side) 21.3.6528147
-  - Android SDK Tools
+- [Android Studio](https://developer.android.com/studio)
 
 ```shell script
-git clone --recurse-submodules https://github.com/shadowsocksRb/shadowsocksRb-android.git
+# 注意不能直接clone，要加参数--recurse-submodules
+git clone --recurse-submodules https://github.com/zhaoweih/shadowsocksRb-android.git
 cd shadowsocksRb-android
-# 建议编辑 mobile/build.gradle ,修改 applicationId 以规避检测
-./gradlew aR
-adb install mobile/build/outputs/apk/release/mobile-release.apk
+# 建议编辑 mobile/build.gradle，修改 applicationId 以规避检测
 ```
 
 ### 贡献
