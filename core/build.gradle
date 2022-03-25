@@ -7,13 +7,10 @@ plugins {
 
 android {
     compileSdkVersion rootProject.compileSdkVersion
-    buildToolsVersion rootProject.buildToolsVersion
     ndkVersion rootProject.ndkVersion
     defaultConfig {
         minSdkVersion rootProject.minSdkVersion
         targetSdkVersion rootProject.sdkVersion
-        versionCode rootProject.versionCode
-        versionName rootProject.versionName
         buildConfigField("int", "VERSION_CODE", "${rootProject.versionCode}")
         externalNativeBuild {
             ndkBuild {
@@ -45,9 +42,6 @@ android {
     }
 }
 
-androidExtensions {
-    experimental = true
-}
 
 
 def coroutinesVersion = '1.5.1'
