@@ -3,11 +3,13 @@ package com.github.shadowsocks.database
 import android.database.sqlite.SQLiteCantOpenDatabaseException
 import android.util.Base64
 import com.github.shadowsocks.Core
+import com.github.shadowsocks.preference.DataStore
+import com.github.shadowsocks.utils.Key
 import com.github.shadowsocks.utils.printLog
+import com.github.shadowsocks.utils.setUA
 import com.github.shadowsocks.utils.useCancellable
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
+import java.net.*
 import java.sql.SQLException
 
 object SSRSubManager {
@@ -47,12 +49,29 @@ object SSRSubManager {
         emptyList()
     }
 
-    private suspend fun getResponse(url: String): String {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.addRequestProperty("User-Agent","ShadowsocksRb (https://github.com/ShadowsocksRb)")
-        connection.addRequestProperty("X-Forwarded-For","127.0.0.1")
-        val body = connection.useCancellable { inputStream.bufferedReader().use { it.readText() } }
-        return String(Base64.decode(body, Base64.URL_SAFE))
+    private suspend fun getResponse(url: String, useProxy: Boolean): String {
+        val proxy = when {
+            DataStore.socksAddress == null -> Proxy.NO_PROXY
+            useProxy -> Proxy(Proxy.Type.SOCKS, DataStore.socksAddress)
+            DataStore.serviceMode != Key.modeVpn -> Proxy(Proxy.Type.SOCKS, DataStore.proxyAddress)
+            else -> Proxy.NO_PROXY
+        }
+        if (DataStore.socksUser.isNotEmpty()) {
+            val authenticator = object : Authenticator() {
+                override fun getPasswordAuthentication() =
+                        PasswordAuthentication(DataStore.socksUser, DataStore.socksPswd)
+            }
+            Authenticator.setDefault(authenticator)
+        }
+        try {
+            val connection = URL(url).openConnection(proxy) as HttpURLConnection
+            val body = connection.setUA().useCancellable {
+                inputStream.bufferedReader().use { it.readText() }
+            }
+            return String(Base64.decode(body, Base64.URL_SAFE))
+        } finally {
+            Authenticator.setDefault(null)
+        }
     }
 
     fun deletProfiles(ssrSub: SSRSub) {
@@ -60,9 +79,9 @@ object SSRSubManager {
         ProfileManager.deletSSRSubProfiles(profiles)
     }
 
-    suspend fun update(ssrSub: SSRSub, b: String = "") {
-        val response = if (b.isEmpty()) getResponse(ssrSub.url) else b
-        var profiles = Profile.findAllSSRUrls(response, Core.currentProfile?.first).toList()
+    suspend fun update(ssrSub: SSRSub, b: String = "", useProxy: Boolean) {
+        val response = b.ifEmpty { getResponse(ssrSub.url, useProxy) }
+        var profiles = Profile.findAllSSRUrls(response, Core.currentProfile?.main).toList()
         when {
             profiles.isEmpty() -> {
                 deletProfiles(ssrSub)
@@ -94,14 +113,14 @@ object SSRSubManager {
         ProfileManager.createProfilesFromSub(profiles, ssrSub.url_group)
     }
 
-    suspend fun create(url: String): SSRSub {
-        val response = getResponse(url)
-        val profiles = Profile.findAllSSRUrls(response, Core.currentProfile?.first).toList()
+    suspend fun create(url: String, useProxy: Boolean): SSRSub {
+        val response = getResponse(url, useProxy)
+        val profiles = Profile.findAllSSRUrls(response, Core.currentProfile?.main).toList()
         if (profiles.isNullOrEmpty() || profiles[0].url_group.isEmpty()) throw IOException("Invalid Link")
         var new = SSRSub(url = url, url_group = profiles[0].url_group)
         getAllSSRSub().forEach { if (it.url_group == new.url_group) throw IOException("Group already exists") }
         new = createSSRSub(new)
-        update(new, response)
+        update(new, response, useProxy)
         return new
     }
 }

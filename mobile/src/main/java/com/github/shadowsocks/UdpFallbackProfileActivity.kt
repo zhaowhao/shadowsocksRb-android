@@ -28,6 +28,7 @@ import android.view.ViewGroup
 import android.widget.CheckedTextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
+import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -39,7 +40,6 @@ import com.github.shadowsocks.utils.resolveResourceId
 import com.github.shadowsocks.widget.ListHolderListener
 import com.github.shadowsocks.widget.ListListener
 import com.google.android.material.snackbar.Snackbar
-import kotlinx.android.synthetic.main.layout_udp_fallback.*
 
 class UdpFallbackProfileActivity : AppCompatActivity() {
     inner class ProfileViewHolder(view: View) : RecyclerView.ViewHolder(view), View.OnClickListener {
@@ -98,6 +98,7 @@ class UdpFallbackProfileActivity : AppCompatActivity() {
         ListHolderListener.setup(this)
 
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
+        val list = findViewById<RecyclerView>(R.id.list)
         toolbar.setTitle(R.string.udp_fallback)
         toolbar.setNavigationIcon(R.drawable.ic_navigation_close)
         toolbar.setNavigationOnClickListener { finish() }
@@ -119,7 +120,7 @@ class UdpFallbackProfileActivity : AppCompatActivity() {
         }
 
         findViewById<RecyclerView>(R.id.list).apply {
-            setOnApplyWindowInsetsListener(ListListener)
+            ViewCompat.setOnApplyWindowInsetsListener(this, ListListener)
             itemAnimator = DefaultItemAnimator()
             adapter = profilesAdapter
             layoutManager = LinearLayoutManager(this@UdpFallbackProfileActivity, RecyclerView.VERTICAL, false).apply {

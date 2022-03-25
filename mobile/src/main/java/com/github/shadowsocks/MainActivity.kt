@@ -37,8 +37,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.graphics.drawable.IconCompat
 import androidx.core.net.toUri
-import androidx.core.view.GravityCompat
-import androidx.core.view.updateLayoutParams
+import androidx.core.view.*
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.preference.PreferenceDataStore
 import com.crashlytics.android.Crashlytics
@@ -152,8 +151,7 @@ class MainActivity : AppCompatActivity(), ShadowsocksConnection.Callback, OnPref
         }
     }
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val connection = ShadowsocksConnection(handler, true)
+    private val connection = ShadowsocksConnection(true)
     override fun onServiceConnected(service: IShadowsocksService) = changeState(try {
         BaseService.State.values()[service.state]
     } catch (_: RemoteException) {
@@ -178,13 +176,13 @@ class MainActivity : AppCompatActivity(), ShadowsocksConnection.Callback, OnPref
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.layout_main)
         snackbar = findViewById(R.id.snackbar)
-        snackbar.setOnApplyWindowInsetsListener(ListHolderListener)
+        ViewCompat.setOnApplyWindowInsetsListener(snackbar, ListHolderListener)
         stats = findViewById(R.id.stats)
         stats.setOnClickListener { if (state == BaseService.State.Connected) stats.testConnection() }
         drawer = findViewById(R.id.drawer)
-        drawer.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         navigation = findViewById(R.id.navigation)
         navigation.setNavigationItemSelectedListener(this)
         if (savedInstanceState == null) {
@@ -193,10 +191,11 @@ class MainActivity : AppCompatActivity(), ShadowsocksConnection.Callback, OnPref
         }
 
         fab = findViewById(R.id.fab)
+        fab.initProgress(findViewById(R.id.fabProgress))
         fab.setOnClickListener { toggle() }
-        fab.setOnApplyWindowInsetsListener { view, insets ->
+        ViewCompat.setOnApplyWindowInsetsListener(fab) { view, insets ->
             view.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                bottomMargin = insets.systemWindowInsetBottom +
+                bottomMargin = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom +
                         resources.getDimensionPixelOffset(R.dimen.mtrl_bottomappbar_fab_bottom_margin)
             }
             insets
@@ -210,7 +209,7 @@ class MainActivity : AppCompatActivity(), ShadowsocksConnection.Callback, OnPref
 
     override fun onPreferenceDataStoreChanged(store: PreferenceDataStore, key: String) {
         when (key) {
-            Key.serviceMode -> handler.post {
+            Key.serviceMode -> {
                 connection.disconnect(this)
                 connection.connect(this, this)
             }
@@ -287,6 +286,5 @@ class MainActivity : AppCompatActivity(), ShadowsocksConnection.Callback, OnPref
         DataStore.publicStore.unregisterChangeListener(this)
         connection.disconnect(this)
         BackupManager(this).dataChanged()
-        handler.removeCallbacksAndMessages(null)
     }
 }

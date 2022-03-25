@@ -37,7 +37,11 @@ class TrafficMonitor(statFile: File) {
         private val buffer = ByteArray(16)
         private val stat = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN)
         override fun acceptInternal(socket: LocalSocket) {
-            if (socket.inputStream.read(buffer) != 16) throw IOException("Unexpected traffic stat length")
+            when (val read = socket.inputStream.read(buffer)) {
+                -1 -> return
+                16 -> { }
+                else -> throw IOException("Unexpected traffic stat length $read")
+            }
             val tx = stat.getLong(0)
             val rx = stat.getLong(8)
             if (current.txTotal != tx) {
@@ -96,7 +100,7 @@ class TrafficMonitor(statFile: File) {
             ProfileManager.updateProfile(profile)
         } catch (e: IOException) {
             if (!DataStore.directBootAware) throw e // we should only reach here because we're in direct boot
-            val profile = DirectBoot.getDeviceProfile()!!.toList().filterNotNull().single { it.id == id }
+            val profile = DirectBoot.getDeviceProfile()!!.toList().single { it.id == id }
             profile.tx += current.txTotal
             profile.rx += current.rxTotal
             profile.dirty = true

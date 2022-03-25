@@ -22,7 +22,13 @@ https://github.com/zhaoweih/shadowsocksRb-android/releases
 
 ### 编译
 
-- [Android Studio](https://developer.android.com/studio)
+* [Git](https://git-scm.com/downloads)
+* [OpenJDK 11+](https://jdk.java.net/)
+* [Android SDK](https://developer.android.com/studio#command-tools)
+  - Android SDK Build-Tools 31.0.0
+  - Android SDK Platform 31
+  - NDK (Side by side) 21.4.7075529
+  - Android SDK Tools
 
 ```shell script
 # 注意不能直接clone，要加参数--recurse-submodules

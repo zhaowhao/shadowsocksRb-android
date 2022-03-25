@@ -31,6 +31,7 @@ import com.google.gson.JsonStreamParser
 import org.json.JSONArray
 import java.io.IOException
 import java.io.InputStream
+import java.io.Serializable
 import java.sql.SQLException
 
 /**
@@ -46,6 +47,14 @@ object ProfileManager {
     }
     var listener: Listener? = null
 
+    data class ExpandedProfile(val main: Profile, val udpFallback: Profile?) : Serializable {
+        companion object {
+            private const val serialVersionUID = 1L
+        }
+
+        fun toList() = listOfNotNull(main, udpFallback)
+    }
+
     @Throws(SQLException::class)
     fun createProfile(profile: Profile = Profile()): Profile {
         profile.id = 0
@@ -57,8 +66,8 @@ object ProfileManager {
 
     fun deletSSRSubProfiles(profiles: List<Profile>) {
         if (profiles.isEmpty()) return
-        val first: Long = Core.currentProfile?.first?.id ?: -1
-        val second: Long = Core.currentProfile?.second?.id ?: -1
+        val first: Long = Core.currentProfile?.main?.id ?: -1
+        val second: Long = Core.currentProfile?.udpFallback?.id ?: -1
         profiles.plus(getObsoleteProfiles()).forEach {
             if (it.id != first && it.id != second) delProfile(it.id)
             else {
@@ -88,7 +97,7 @@ object ProfileManager {
         val profiles = if (replace) getAllProfiles()?.associateBy { it.formattedAddress } else null
         val feature = if (replace) {
             profiles?.values?.singleOrNull { it.id == DataStore.profileId }
-        } else Core.currentProfile?.first
+        } else Core.currentProfile?.main
         val lazyClear = lazy { clear() }
         jsons.asIterable().forEachTry { json ->
             Profile.parseJson(JsonStreamParser(json.bufferedReader()).asSequence().single(), feature) {
@@ -128,7 +137,7 @@ object ProfileManager {
     }
 
     @Throws(IOException::class)
-    fun expand(profile: Profile): Pair<Profile, Profile?> = Pair(profile, profile.udpFallback?.let { getProfile(it) })
+    fun expand(profile: Profile) = ExpandedProfile(profile, profile.udpFallback?.let { getProfile(it) })
 
     @Throws(SQLException::class)
     fun delProfile(id: Long) {

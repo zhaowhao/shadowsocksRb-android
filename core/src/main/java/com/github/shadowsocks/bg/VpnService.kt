@@ -65,7 +65,7 @@ class VpnService : BaseVpnService(), LocalDnsService.Interface {
     private inner class ProtectWorker : ConcurrentLocalSocketListener("ShadowsocksVpnThread",
             File(Core.deviceStorage.noBackupFilesDir, "protect_path")) {
         override fun acceptInternal(socket: LocalSocket) {
-            socket.inputStream.read()
+            if (socket.inputStream.read() == -1) return
             val fd = socket.ancillaryFileDescriptors!!.single()!!
             try {
                 socket.outputStream.write(if (underlyingNetwork.let { network ->
@@ -74,8 +74,7 @@ class VpnService : BaseVpnService(), LocalDnsService.Interface {
                                 return@let true
                             } catch (e: IOException) {
                                 when ((e.cause as? ErrnoException)?.errno) {
-                                    // also suppress ENONET (Machine is not on the network)
-                                    OsConstants.EPERM, 64 -> e.printStackTrace()
+                                    OsConstants.EPERM, OsConstants.EACCES, OsConstants.ENONET -> e.printStackTrace()
                                     else -> printLog(e)
                                 }
                                 return@let false
@@ -104,6 +103,7 @@ class VpnService : BaseVpnService(), LocalDnsService.Interface {
     private var worker: ProtectWorker? = null
     private var active = false
     private var metered = false
+    @Volatile
     private var underlyingNetwork: Network? = null
         set(value) {
             field = value
@@ -143,11 +143,6 @@ class VpnService : BaseVpnService(), LocalDnsService.Interface {
     override suspend fun preInit() = DefaultNetworkListener.start(this) { underlyingNetwork = it }
     override suspend fun getActiveNetwork() = DefaultNetworkListener.get()
     override suspend fun resolver(host: String) = DnsResolverCompat.resolve(DefaultNetworkListener.get(), host)
-    override suspend fun openConnection(url: URL) = DefaultNetworkListener.get().openConnection(url)
-            .apply {
-                addRequestProperty("User-Agent", "ShadowsocksRb (https://github.com/ShadowsocksRb)")
-                addRequestProperty("X-Forwarded-For", "127.0.0.1")
-            }
 
     override suspend fun startProcesses(hosts: HostsFile) {
         worker = ProtectWorker().apply { start() }

@@ -20,15 +20,12 @@
 
 package com.github.shadowsocks
 
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ActivityNotFoundException
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Intent
-import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.text.format.Formatter
 import android.util.LongSparseArray
@@ -39,10 +36,11 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.widget.PopupMenu
+import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
 import androidx.appcompat.widget.TooltipCompat
-import androidx.core.content.getSystemService
 import androidx.core.os.bundleOf
+import androidx.core.view.ViewCompat
 import androidx.fragment.app.DialogFragment
 import androidx.recyclerview.widget.*
 import com.crashlytics.android.Crashlytics
@@ -65,7 +63,7 @@ import com.google.zxing.MultiFormatWriter
 import com.google.zxing.WriterException
 import java.nio.charset.StandardCharsets
 
-class ProfilesFragment : ToolbarFragment(), Toolbar.OnMenuItemClickListener {
+class ProfilesFragment : ToolbarFragment(), Toolbar.OnMenuItemClickListener, SearchView.OnQueryTextListener {
     companion object {
         /**
          * used for callback from stateChanged from MainActivity
@@ -89,7 +87,6 @@ class ProfilesFragment : ToolbarFragment(), Toolbar.OnMenuItemClickListener {
     private fun isProfileEditable(id: Long) =
             (activity as MainActivity).state == BaseService.State.Stopped || id !in Core.activeProfileIds
 
-    @SuppressLint("ValidFragment")
     class QRCodeDialog() : DialogFragment() {
         constructor(url: String) : this() {
             arguments = bundleOf(Pair(KEY_URL, url))
@@ -210,7 +207,8 @@ class ProfilesFragment : ToolbarFragment(), Toolbar.OnMenuItemClickListener {
                 true
             }
             R.id.action_export_clipboard -> {
-                clipboard.setPrimaryClip(ClipData.newPlainText(null, this.item.toString()))
+                (activity as MainActivity).snackbar().setText(if (Core.trySetPrimaryClip(this.item.toString()))
+                    R.string.action_export_msg else R.string.action_export_err).show()
                 true
             }
             else -> false
@@ -239,6 +237,16 @@ class ProfilesFragment : ToolbarFragment(), Toolbar.OnMenuItemClickListener {
             val pos = itemCount
             profiles += profile
             notifyItemInserted(pos)
+        }
+
+        fun filter(name: String) {
+            val active = ProfileManager.getActiveProfiles()?.toMutableList() ?: mutableListOf()
+            profiles.clear()
+            val lower = name.lowercase()
+            profiles.addAll(active.filter {
+                it.name.lowercase().contains(lower) || it.host.lowercase().contains(lower)
+            })
+            notifyDataSetChanged()
         }
 
         fun move(from: Int, to: Int) {
@@ -321,25 +329,34 @@ class ProfilesFragment : ToolbarFragment(), Toolbar.OnMenuItemClickListener {
     private lateinit var undoManager: UndoSnackbarManager<Profile>
     private val statsCache = LongSparseArray<TrafficStats>()
 
-    private val clipboard by lazy { requireContext().getSystemService<ClipboardManager>()!! }
-
     private fun startConfig(profile: Profile) {
         profile.serialize()
         startActivity(Intent(context, ProfileConfigActivity::class.java).putExtra(Action.EXTRA_PROFILE_ID, profile.id))
     }
+
+    override fun onQueryTextChange(query: String): Boolean {
+        profilesAdapter.filter(query)
+        return false
+    }
+
+    override fun onQueryTextSubmit(query: String): Boolean = false
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? =
             inflater.inflate(R.layout.layout_list, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        view.setOnApplyWindowInsetsListener(ListHolderListener)
+        ViewCompat.setOnApplyWindowInsetsListener(view, ListHolderListener)
         toolbar.setTitle(R.string.profiles)
         toolbar.inflateMenu(R.menu.profile_manager_menu)
         toolbar.setOnMenuItemClickListener(this)
+        val searchView = toolbar.findViewById<SearchView>(R.id.action_search)
+        searchView.setOnQueryTextListener(this)
+        searchView.queryHint = getString(android.R.string.search_go)
+
         ProfileManager.ensureNotEmpty()
         profilesList = view.findViewById(R.id.list)
-        profilesList.setOnApplyWindowInsetsListener(MainListListener)
+        ViewCompat.setOnApplyWindowInsetsListener(profilesList, MainListListener)
         profilesList.layoutManager = layoutManager
         profilesList.addItemDecoration(DividerItemDecoration(context, layoutManager.orientation))
         layoutManager.scrollToPosition(profilesAdapter.profiles.indexOfFirst { it.id == DataStore.profileId })
@@ -360,14 +377,14 @@ class ProfilesFragment : ToolbarFragment(), Toolbar.OnMenuItemClickListener {
                     if (isEnabled) super.getDragDirs(recyclerView, viewHolder) else 0
 
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-                val index = viewHolder.adapterPosition
+                val index = viewHolder.bindingAdapterPosition
                 profilesAdapter.remove(index)
                 undoManager.remove(Pair(index, (viewHolder as ProfileViewHolder).item))
             }
 
             override fun onMove(recyclerView: RecyclerView,
                                 viewHolder: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean {
-                profilesAdapter.move(viewHolder.adapterPosition, target.adapterPosition)
+                profilesAdapter.move(viewHolder.bindingAdapterPosition, target.bindingAdapterPosition)
                 return true
             }
 
@@ -393,8 +410,8 @@ class ProfilesFragment : ToolbarFragment(), Toolbar.OnMenuItemClickListener {
             R.id.action_import_clipboard -> {
                 try {
                     val profiles = Profile.findAllUrls(
-                            clipboard.primaryClip!!.getItemAt(0).text,
-                            Core.currentProfile?.first
+                            Core.clipboard.primaryClip!!.getItemAt(0).text,
+                            Core.currentProfile?.main
                     ).toList()
                     if (profiles.isNotEmpty()) {
                         profiles.forEach { ProfileManager.createProfile(it) }
@@ -425,15 +442,14 @@ class ProfilesFragment : ToolbarFragment(), Toolbar.OnMenuItemClickListener {
             }
             R.id.action_manual_settings -> {
                 startConfig(ProfileManager.createProfile(
-                        Profile().also { Core.currentProfile?.first?.copyFeatureSettingsTo(it, true) }))
+                        Profile().also { Core.currentProfile?.main?.copyFeatureSettingsTo(it, true) }))
                 true
             }
             R.id.action_export_clipboard -> {
                 val profiles = ProfileManager.getActiveProfiles()
-                (activity as MainActivity).snackbar().setText(if (profiles != null) {
-                    clipboard.setPrimaryClip(ClipData.newPlainText(null, profiles.joinToString("\n")))
-                    R.string.action_export_msg
-                } else R.string.action_export_err).show()
+                val success = profiles != null && Core.trySetPrimaryClip(profiles.joinToString("\n"))
+                (activity as MainActivity).snackbar().setText(if (success)
+                    R.string.action_export_msg else R.string.action_export_err).show()
                 true
             }
             R.id.action_export_file -> {

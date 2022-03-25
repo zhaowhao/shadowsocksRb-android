@@ -22,6 +22,8 @@ package com.github.shadowsocks
 
 import android.app.*
 import android.app.admin.DevicePolicyManager
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
@@ -30,13 +32,16 @@ import android.os.Build
 import android.os.Build.VERSION_CODES.O
 import android.os.Build.VERSION_CODES.Q
 import android.os.UserManager
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.annotation.VisibleForTesting
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.work.Configuration
 import androidx.work.WorkManager
+import com.github.shadowsocks.acl.Acl
 import com.github.shadowsocks.aidl.ShadowsocksConnection
+import com.github.shadowsocks.core.BuildConfig
 import com.github.shadowsocks.core.R
 import com.github.shadowsocks.database.Profile
 import com.github.shadowsocks.database.ProfileManager
@@ -53,26 +58,31 @@ import java.io.File
 import java.io.IOException
 import kotlin.reflect.KClass
 
-object Core {
+object Core : Configuration.Provider {
     const val TAG = "Core"
-
     lateinit var app: Application
         @VisibleForTesting set
     lateinit var configureIntent: (Context) -> PendingIntent
     val activity by lazy { app.getSystemService<ActivityManager>()!! }
+    val clipboard by lazy { app.getSystemService<ClipboardManager>()!! }
     val connectivity by lazy { app.getSystemService<ConnectivityManager>()!! }
     val notification by lazy { app.getSystemService<NotificationManager>()!! }
+    val user by lazy { app.getSystemService<UserManager>()!! }
     val packageInfo: PackageInfo by lazy { getPackageInfo(app.packageName) }
     val deviceStorage by lazy { if (Build.VERSION.SDK_INT < 24) app else DeviceStorageApp(app) }
     val directBootSupported by lazy {
-        Build.VERSION.SDK_INT >= 24 && app.getSystemService<DevicePolicyManager>()?.storageEncryptionStatus ==
-                DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE_PER_USER
+        Build.VERSION.SDK_INT >= 24 && try {
+            app.getSystemService<DevicePolicyManager>()?.storageEncryptionStatus ==
+                    DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE_PER_USER
+        } catch (_: RuntimeException) {
+            false
+        }
     }
 
     val activeProfileIds get() = ProfileManager.getProfile(DataStore.profileId).let {
         if (it == null) emptyList() else listOfNotNull(it.id, it.udpFallback)
     }
-    val currentProfile: Pair<Profile, Profile?>? get() {
+    val currentProfile: ProfileManager.ExpandedProfile? get() {
         if (DataStore.directBootAware) DirectBoot.getDeviceProfile()?.apply { return this }
         return ProfileManager.expand(ProfileManager.getProfile(DataStore.profileId) ?: return null)
     }
@@ -87,7 +97,7 @@ object Core {
         this.app = app
         this.configureIntent = {
             PendingIntent.getActivity(it, 0, Intent(it, configureClass.java)
-                    .setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT), 0)
+                    .setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT), PendingIntent.FLAG_IMMUTABLE)
         }
 
         if (Build.VERSION.SDK_INT >= 24) {  // migrate old files
@@ -96,15 +106,13 @@ object Core {
 
         // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode
         System.setProperty(DEBUG_PROPERTY_NAME, DEBUG_PROPERTY_VALUE_ON)
-        WorkManager.initialize(deviceStorage, Configuration.Builder().apply {
-            setExecutor { GlobalScope.launch { it.run() } }
-            setTaskExecutor { GlobalScope.launch { it.run() } }
-        }.build())
+
         UpdateCheck.enqueue()
 
         // handle data restored/crash
-        if (Build.VERSION.SDK_INT >= 24 && DataStore.directBootAware &&
-                app.getSystemService<UserManager>()?.isUserUnlocked == true) DirectBoot.flushTrafficStats()
+        if (Build.VERSION.SDK_INT >= 24 && DataStore.directBootAware && user.isUserUnlocked) {
+            DirectBoot.flushTrafficStats()
+        }
         if (DataStore.tcpFastOpen && !TcpFastOpen.sendEnabled) TcpFastOpen.enableTimeout()
         if (DataStore.publicStore.getLong(Key.assetUpdateTime, -1) != packageInfo.lastUpdateTime) {
             val assetManager = app.assets
@@ -119,6 +127,13 @@ object Core {
         }
         updateNotificationChannels()
     }
+
+    override fun getWorkManagerConfiguration() = Configuration.Builder().apply {
+        setDefaultProcessName(app.packageName + ":bg")
+        setMinimumLoggingLevel(if (BuildConfig.DEBUG) Log.VERBOSE else Log.INFO)
+        setExecutor { GlobalScope.launch { it.run() } }
+        setTaskExecutor { GlobalScope.launch { it.run() } }
+    }.build()
 
     fun updateNotificationChannels() {
         if (Build.VERSION.SDK_INT >= O) @RequiresApi(O) {
@@ -145,6 +160,14 @@ object Core {
     }
 
     fun getPackageInfo(packageName: String) = app.packageManager.getPackageInfo(packageName, 0)!!
+
+    fun trySetPrimaryClip(clip: String) = try {
+        clipboard.setPrimaryClip(ClipData.newPlainText(null, clip))
+        true
+    } catch (e: RuntimeException) {
+        Log.d(TAG, e.readableMessage, e)
+        false
+    }
 
     fun startService() = ContextCompat.startForegroundService(app, Intent(app, ShadowsocksConnection.serviceClass))
     fun reloadService() = app.sendBroadcast(Intent(Action.RELOAD).setPackage(app.packageName))

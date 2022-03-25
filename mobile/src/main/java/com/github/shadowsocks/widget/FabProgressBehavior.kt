@@ -1,7 +1,7 @@
 /*******************************************************************************
  *                                                                             *
- *  Copyright (C) 2019 by Max Lv <max.c.lv@gmail.com>                          *
- *  Copyright (C) 2019 by Mygod Studio <contact-shadowsocks-android@mygod.be>  *
+ *  Copyright (C) 2021 by Max Lv <max.c.lv@gmail.com>                          *
+ *  Copyright (C) 2021 by Mygod Studio <contact-shadowsocks-android@mygod.be>  *
  *                                                                             *
  *  This program is free software: you can redistribute it and/or modify       *
  *  it under the terms of the GNU General Public License as published by       *
@@ -18,22 +18,25 @@
  *                                                                             *
  *******************************************************************************/
 
-package com.github.shadowsocks.aidl
+package com.github.shadowsocks.widget
 
-import android.os.Parcelable
-import kotlinx.parcelize.Parcelize
+import android.content.Context
+import android.util.AttributeSet
+import android.view.View
+import androidx.coordinatorlayout.widget.CoordinatorLayout
+import com.google.android.material.progressindicator.CircularProgressIndicator
 
-@Parcelize
-data class TrafficStats(
-        // Bytes per second
-        var txRate: Long = 0L,
-        var rxRate: Long = 0L,
+class FabProgressBehavior(context: Context, attrs: AttributeSet?) :
+    CoordinatorLayout.Behavior<CircularProgressIndicator>(context, attrs) {
+    override fun layoutDependsOn(parent: CoordinatorLayout, child: CircularProgressIndicator, dependency: View) =
+        dependency.id == (child.layoutParams as CoordinatorLayout.LayoutParams).anchorId
 
-        // Bytes for the current session
-        var txTotal: Long = 0L,
-        var rxTotal: Long = 0L
-) : Parcelable {
-    operator fun plus(other: TrafficStats) = TrafficStats(
-            txRate + other.txRate, rxRate + other.rxRate,
-            txTotal + other.txTotal, rxTotal + other.rxTotal)
+    override fun onLayoutChild(parent: CoordinatorLayout, child: CircularProgressIndicator,
+                               layoutDirection: Int): Boolean {
+        val size = parent.getDependencies(child).single().measuredHeight + child.trackThickness
+        return if (child.indicatorSize != size) {
+            child.indicatorSize = size
+            true
+        } else false
+    }
 }

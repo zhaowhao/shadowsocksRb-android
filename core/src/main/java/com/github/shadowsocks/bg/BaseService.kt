@@ -24,9 +24,11 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.*
+import android.os.Build
+import android.os.IBinder
+import android.os.RemoteCallbackList
+import android.os.RemoteException
 import android.util.Log
-import androidx.core.content.getSystemService
 import com.crashlytics.android.Crashlytics
 import com.github.shadowsocks.BootReceiver
 import com.github.shadowsocks.Core
@@ -44,7 +46,6 @@ import java.io.File
 import java.io.IOException
 import java.net.URL
 import java.net.UnknownHostException
-import java.util.*
 
 /**
  * This object uses WeakMap to simulate the effects of multi-inheritance.
@@ -129,7 +130,7 @@ object BaseService {
 
         private suspend fun loop() {
             while (true) {
-                delay(bandwidthListeners.values.min() ?: return)
+                delay(bandwidthListeners.values.minOrNull() ?: return)
                 val proxies = listOfNotNull(data?.proxy, data?.udpFallback)
                 val stats = proxies
                         .map { Pair(it.profile.id, it.trafficMonitor?.requestUpdate()) }
@@ -189,12 +190,12 @@ object BaseService {
             callbacks.unregister(cb)
         }
 
-        fun stateChanged(s: State, msg: String?) {
+        fun stateChanged(s: State, msg: String?) = launch {
             val profileName = profileName
             broadcast { it.stateChanged(s.ordinal, profileName, msg) }
         }
 
-        fun trafficPersisted(ids: List<Long>) {
+        fun trafficPersisted(ids: List<Long>) = launch {
             if (bandwidthListeners.isNotEmpty() && ids.isNotEmpty()) broadcast { item ->
                 if (bandwidthListeners.contains(item.asBinder())) ids.forEach(item::trafficPersisted)
             }
@@ -233,8 +234,8 @@ object BaseService {
         fun buildAdditionalArguments(cmd: ArrayList<String>): ArrayList<String> = cmd
 
         suspend fun startProcesses(hosts: HostsFile) {
-            val configRoot = (if (Build.VERSION.SDK_INT < 24 || app.getSystemService<UserManager>()
-                            ?.isUserUnlocked != false) app else Core.deviceStorage).noBackupFilesDir
+            val context = if (Build.VERSION.SDK_INT < 24 || Core.user.isUserUnlocked) app else Core.deviceStorage
+            val configRoot = context.noBackupFilesDir
             val udpFallback = data.udpFallback
             data.proxy!!.start(this,
                     File(Core.deviceStorage.noBackupFilesDir, "stat_main"),
@@ -305,20 +306,19 @@ object BaseService {
         suspend fun preInit() { }
         suspend fun getActiveNetwork() = if (Build.VERSION.SDK_INT >= 23) Core.connectivity.activeNetwork else null
         suspend fun resolver(host: String) = DnsResolverCompat.resolveOnActiveNetwork(host)
-        suspend fun openConnection(url: URL) = url.openConnection()
 
         fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
             val data = data
             if (data.state != State.Stopped) return Service.START_NOT_STICKY
-            val profilePair = Core.currentProfile
+            val expanded = Core.currentProfile
             this as Context
-            if (profilePair == null) {
+            if (expanded == null) {
                 // gracefully shutdown: https://stackoverflow.com/q/47337857/2245107
                 data.notification = createNotification("")
                 stopRunner(false, getString(R.string.profile_empty))
                 return Service.START_NOT_STICKY
             }
-            val (profile, fallback) = profilePair
+            val (profile, fallback) = expanded
             profile.name = profile.formattedName    // save name for later queries
             val proxy = ProxyInstance(profile)
             data.proxy = proxy
@@ -346,7 +346,7 @@ object BaseService {
                     data.udpFallback?.init(this@Interface, hosts)
                     if (profile.route == Acl.CUSTOM_RULES) try {
                         withContext(Dispatchers.IO) {
-                            Acl.createCustom(this@Interface::openConnection)
+                            Acl.createCustom(this@Interface.getActiveNetwork())
                         }
                     } catch (e: IOException) {
                         throw ExpectedExceptionWrapper(e)

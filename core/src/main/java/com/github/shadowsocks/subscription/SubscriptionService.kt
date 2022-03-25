@@ -49,7 +49,7 @@ class SubscriptionService : Service(), CoroutineScope {
         private const val NOTIFICATION_CHANNEL = "service-subscription"
         private const val NOTIFICATION_ID = 2
 
-        val idle = MutableLiveData<Boolean>(true)
+        val idle = MutableLiveData(true)
 
         val notificationChannel @RequiresApi(26) get() = NotificationChannel(NOTIFICATION_CHANNEL,
                 app.getText(R.string.service_subscription), NotificationManager.IMPORTANCE_LOW)
@@ -79,7 +79,7 @@ class SubscriptionService : Service(), CoroutineScope {
                             R.drawable.ic_navigation_close,
                             getText(R.string.stop),
                             PendingIntent.getBroadcast(this@SubscriptionService, 0,
-                                    Intent(Action.ABORT).setPackage(packageName), 0)).apply {
+                                    Intent(Action.ABORT).setPackage(packageName), PendingIntent.FLAG_IMMUTABLE)).apply {
                         setShowsUserInterface(false)
                     }.build())
                     setCategory(NotificationCompat.CATEGORY_PROGRESS)
@@ -91,8 +91,9 @@ class SubscriptionService : Service(), CoroutineScope {
                 }
                 Core.notification.notify(NOTIFICATION_ID, notification.build())
                 counter = 0
+                val useProxy = intent?.getBooleanExtra("useProxy", false) ?: false
                 val workers = ssrsubs.map {
-                    async(Dispatchers.IO) { fetchJson(it, ssrsubs.size, notification) }
+                    async(Dispatchers.IO) { fetchJson(it, useProxy, ssrsubs.size, notification) }
                 }
                 try {
                     workers.awaitAll()
@@ -120,17 +121,15 @@ class SubscriptionService : Service(), CoroutineScope {
         return START_NOT_STICKY
     }
 
-    private suspend fun fetchJson(ssrSub: SSRSub, max: Int, notification: NotificationCompat.Builder) {
+    private suspend fun fetchJson(ssrSub: SSRSub, useProxy: Boolean, max: Int, notification: NotificationCompat.Builder) {
         try {
-            SSRSubManager.update(ssrSub)
+            SSRSubManager.update(ssrSub, useProxy = useProxy)
         } catch (e: Exception) {
             ssrSub.status = SSRSub.NETWORK_ERROR
             SSRSubManager.updateSSRSub(ssrSub)
             printLog(e)
-            coroutineScope {
-                launch(Dispatchers.Main) {
-                    Toast.makeText(this@SubscriptionService, e.readableMessage, Toast.LENGTH_LONG).show()
-                }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@SubscriptionService, e.readableMessage, Toast.LENGTH_LONG).show()
             }
         } finally {
             withContext(Dispatchers.Main) {
